@@ -664,6 +664,20 @@ Status KuduScanner::Data::OpenTablet(const PartitionKey& partition_key,
     configuration_.SetSnapshotRaw(last_response_.snap_timestamp());
   }
 
+  // Capture the tablet's effective migration timestamp for this scan, if the
+  // server reported one. This field is only present on the first response of
+  // a scanner (i.e. the response to this new-scan request), so it must be
+  // read here and cached. If the server did not surface a value, it indicates 
+  // that the migration GC is disabled for the tablet and the accessor will
+  // return false.
+  if (last_response_.has_migration_timestamp()) {
+    migration_timestamp_ = last_response_.migration_timestamp();
+    has_migration_timestamp_ = true;
+  } else {
+    migration_timestamp_ = 0;
+    has_migration_timestamp_ = false;
+  }
+
   // For READ_YOUR_WRITES mode, updates the latest observed timestamp with
   // the chosen snapshot timestamp sent back from the server, to avoid
   // unnecessarily wait for subsequent reads.

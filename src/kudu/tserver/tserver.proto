@@ -500,6 +500,21 @@ message ScanResponsePB {
   // The server's time upon sending out the scan response. Should always
   // be greater than the scan timestamp.
   optional fixed64 propagated_timestamp = 9;
+
+  // The effective migration history mark (raw HybridClock timestamp) for
+  // the scanned tablet at the moment this scan opened. Rows whose most
+  // recent mutation predates this timestamp may have already been purged
+  // (or may be shortly) by the migration cleanup maintenance op --
+  // clients that care about observing pre-migration data should treat
+  // this as an advisory watermark.
+  //
+  // Unset when migration GC is disabled for this tablet (i.e. both the
+  // per-table 'kudu.table.migration_timestamp' extra config and the
+  // --tablet_migration_timestamp flag are 0, or the server's clock lacks
+  // a physical component). Only populated on the first response of a
+  // scanner (the one issued in reply to a request carrying
+  // 'new_scan_request').
+  optional fixed64 migration_timestamp = 10;
 }
 
 // A scanner keep-alive request.

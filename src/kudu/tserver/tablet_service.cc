@@ -2338,6 +2338,19 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
     if (scan_timestamp != Timestamp::kInvalidTimestamp) {
       resp->set_snap_timestamp(scan_timestamp.ToUint64());
     }
+    // Surface the tablet's effective migration timestamp so that clients can
+    // reason about data that may have been (or may soon be) purged by the
+    // migration GC background op. This is populated only on the first
+    // response for a scanner and the subsequent Scan RPCs for the same scanner do
+    // not carry it (mirrors the 'snap_timestamp' contract above).
+    {
+      shared_ptr<tablet::Tablet> tablet = replica->shared_tablet();
+      Timestamp migration_history_mark;
+      if (tablet &&
+          tablet->GetTabletMigrationHistoryMark(&migration_history_mark)) {
+        resp->set_migration_timestamp(migration_history_mark.ToUint64());
+      }
+    }
   } else if (req->has_scanner_id()) {
     Status s = HandleContinueScanRequest(req, context, &collector, &has_more_results, &error_code);
     if (PREDICT_FALSE(!s.ok())) {

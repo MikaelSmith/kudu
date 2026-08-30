@@ -228,6 +228,18 @@ class KuduScanner::Data {
   // primary key bounds.
   bool short_circuit_;
 
+  // Whether the most recently opened tablet reported a migration timestamp.
+  // Populated from the first Scan response of each new-scan RPC (see
+  // ScanResponsePB.migration_timestamp). Reset when a new tablet is opened.
+  bool has_migration_timestamp_ = false;
+
+  // The effective migration timestamp reported by the tablet server for
+  // the most recently opened tablet, when 'has_migration_timestamp_' is
+  // true. 
+  // Note: Rows whose most recent mutation predates this value
+  // may have been purged by migration GC.
+  uint64_t migration_timestamp_ = 0;
+
   // The encoded last primary key from the most recent tablet scan response.
   std::string last_primary_key_;
 

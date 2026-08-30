@@ -2030,6 +2030,15 @@ const ResourceMetrics& KuduScanner::GetResourceMetrics() const {
   return data_->resource_metrics_;
 }
 
+bool KuduScanner::GetMigrationTimestamp(uint64_t* timestamp) const {
+  if (!data_->has_migration_timestamp_) {
+    return false;
+  }
+  DCHECK(timestamp);
+  *timestamp = data_->migration_timestamp_;
+  return true;
+}
+
 namespace {
 // Callback for the RPC sent by Close().
 // We can't use the KuduScanner response and RPC controller members for this

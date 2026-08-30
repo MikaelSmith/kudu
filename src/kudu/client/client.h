@@ -3067,6 +3067,31 @@ class KUDU_EXPORT KuduScanner {
   /// @return Cumulative resource metrics since the scan was started.
   const ResourceMetrics& GetResourceMetrics() const;
 
+  /// Retrieve the effective migration timestamp reported by the tablet
+  /// server for the tablet currently being scanned.
+  ///
+  /// The migration timestamp is a raw HybridClock value. Rows whose most
+  /// recent mutation predates this timestamp may have been (or may soon
+  /// be) purged by the tablet server's migration cleanup maintenance op.
+  ///
+  /// The value is captured from the first RPC response of each tablet
+  /// scan. In a scan that spans multiple tablets, subsequent calls to
+  /// this method return the value reported for the most recently opened
+  /// tablet. Only meaningful after a successful Open() (or a NextBatch()
+  /// that opened the first tablet).
+  ///
+  /// @note This is an experimental method and will either disappear or
+  ///   change in a future release.
+  ///
+  /// @param [out] timestamp
+  ///   Placeholder for the raw HybridClock migration timestamp. Only
+  ///   written to when this method returns true.
+  /// @return true iff the currently-scanned tablet reported a migration
+  ///   timestamp (i.e. migration GC is enabled for the tablet) and false
+  ///   when migration GC is disabled or the scan has not yet opened a
+  ///   tablet.
+  bool GetMigrationTimestamp(uint64_t* timestamp) const;
+
   /// Set the hint for the size of the next batch in bytes.
   ///
   /// @param [in] batch_size
