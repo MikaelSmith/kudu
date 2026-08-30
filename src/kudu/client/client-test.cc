@@ -196,6 +196,7 @@ DECLARE_uint32(dns_resolver_cache_capacity_mb);
 DECLARE_uint32(txn_keepalive_interval_ms);
 DECLARE_uint32(txn_staleness_tracker_interval_ms);
 DECLARE_uint32(txn_manager_status_table_num_replicas);
+DECLARE_uint64(tablet_migration_timestamp);
 
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 
@@ -9618,7 +9619,73 @@ TEST_F(ClientTest, TestProjectionPredicatesFuzz) {
   ASSERT_EQ(unordered_set<string>(expected_rows.begin(), expected_rows.end()),
             unordered_set<string>(rows.begin(), rows.end())) << rows;
 }
+// Regression test for the migration_timestamp field newly exposed on
+// ScanResponsePB. Verifies that KuduScanner::GetMigrationTimestamp() surfaces
+// the tablet's effective migration mark from each of the resolution paths:
+//   (a) no mark configured -> accessor returns false;
+//   (b) per-table 'kudu.table.migration_timestamp' set -> accessor returns
+//       that value;
+//   (c) per-tserver --tablet_migration_timestamp flag set (table config
+//       unset) -> accessor returns the flag value;
+//   (d) both set -> table config wins over the flag.
+TEST_F(ClientTest, TestScanReportsMigrationTimestamp) {
+  // (a) No migration mark configured anywhere.
+  {
+    KuduScanner scanner(client_table_.get());
+    ASSERT_OK(scanner.Open());
+    uint64_t ts = 0;
+    EXPECT_FALSE(scanner.GetMigrationTimestamp(&ts));
+  }
 
+  // (b) Set the per-table extra config; scanner should report that value.
+  {
+    map<string, string> extra_configs;
+    extra_configs["kudu.table.migration_timestamp"] = "1234567";
+    unique_ptr<KuduTableAlterer> alterer(client_->NewTableAlterer(client_table_->name()));
+    alterer->AlterExtraConfig(extra_configs);
+    ASSERT_OK(alterer->Alter());
+
+    KuduScanner scanner(client_table_.get());
+    ASSERT_OK(scanner.Open());
+    uint64_t ts = 0;
+    ASSERT_TRUE(scanner.GetMigrationTimestamp(&ts));
+    EXPECT_EQ(1234567u, ts);
+  }
+
+  // (c) Clear the per-table config, set the tserver flag instead.
+  {
+    map<string, string> extra_configs;
+    extra_configs["kudu.table.migration_timestamp"] = "";
+    unique_ptr<KuduTableAlterer> alterer(client_->NewTableAlterer(client_table_->name()));
+    alterer->AlterExtraConfig(extra_configs);
+    ASSERT_OK(alterer->Alter());
+
+    google::FlagSaver flag_saver;
+    FLAGS_tablet_migration_timestamp = 424242;
+    KuduScanner scanner(client_table_.get());
+    ASSERT_OK(scanner.Open());
+    uint64_t ts = 0;
+    ASSERT_TRUE(scanner.GetMigrationTimestamp(&ts));
+    EXPECT_EQ(424242u, ts);
+  }
+
+  // (d) With both set, the per-table config overrides the flag.
+  {
+    map<string, string> extra_configs;
+    extra_configs["kudu.table.migration_timestamp"] = "9999";
+    unique_ptr<KuduTableAlterer> alterer(client_->NewTableAlterer(client_table_->name()));
+    alterer->AlterExtraConfig(extra_configs);
+    ASSERT_OK(alterer->Alter());
+
+    google::FlagSaver flag_saver;
+    FLAGS_tablet_migration_timestamp = 424242;
+    KuduScanner scanner(client_table_.get());
+    ASSERT_OK(scanner.Open());
+    uint64_t ts = 0;
+    ASSERT_TRUE(scanner.GetMigrationTimestamp(&ts));
+    EXPECT_EQ(9999u, ts);
+  }
+}
 namespace {
 // Records the outcome of a diff scan for a single key. 'count' is the
 // number of times the key appeared in the diff-scan output (should be
